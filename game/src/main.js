@@ -1,134 +1,20 @@
-// Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s steps
-// (several in a slow frame, none in a fast one), and the renderer paints what is there. The game
-// moves between four screens: title, play, paused and game over.
-//
-// ?seed=N fixes the falling pattern. ?shot=start|play|end (with &seed=N) stages that scene
-// instead of running the loop, paints it twice and sets window.__shotReady for a screenshot.
-import { BEST_KEY, LIVES, STEP } from './config.js';
-import { createRandom } from './random.js';
-import { createWorld, EVENT_HIT, EVENT_OVER } from './world.js';
-import { ACTION_CONFIRM, ACTION_PAUSE, createInput } from './input.js';
-import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
-import { stageShot } from './shots.js';
-
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
-const MAX_FRAME = 0.25;
-
-const params = new URLSearchParams(window.location.search);
-const shot = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
-
-const canvas = document.getElementById('game');
-const status = document.getElementById('status');
-const world = createWorld(createRandom(seed));
-const renderer = createRenderer(canvas);
-
-function readBest() {
-  try {
-    return Number.parseInt(window.localStorage.getItem(BEST_KEY) ?? '0', 10) || 0;
-  } catch {
-    return 0;
-  }
+import{WORLD,COLORS,SAVE}from'./config.js';import{makeInput}from'./input.js';import{makeAudio}from'./audio.js';import{makeWorld,blocked}from'./world.js';import{makePeople,updatePeople}from'./people.js';import{makeCars,carModel,updateCars,makePolice}from'./vehicles.js';import{updatePolice}from'./police.js';import{MISSIONS,startMission}from'./missions.js';import{drawHud}from'./hud.js';import{setupShot}from'./shots.js';
+const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d'),input=makeInput(canvas),audio=makeAudio(),world=makeWorld();let W=innerWidth,H=innerHeight,dpr=1;function resize(){W=innerWidth;H=innerHeight;dpr=devicePixelRatio||1;canvas.width=W*dpr;canvas.height=H*dpr}window.addEventListener('resize',resize);resize();
+const saved=(()=>{try{return JSON.parse(localStorage.getItem(SAVE)||'{}')}catch{return{}}})();const state={x:saved.x||1900,y:saved.y||1500,angle:0,health:100,cash:saved.cash||1200,ammo:18,weapon:'pistol',stars:0,wanted:0,crime:false,screen:'title',started:false,car:null,cars:makeCars(world),people:makePeople(world),police:[],completed:saved.completed||0,mission:-1,timer:0,bust:0,banner:'',bannerTime:0,contact:'Luz Ortega',target:{x:1000,y:1000},distance:0,pickups:[{x:1460,y:1160,ammo:12,live:true},{x:2510,y:2040,ammo:18,live:true},{x:3260,y:930,ammo:12,live:true}]};state.makeCars=makeCars;state.makePeople=makePeople;state.makePolice=makePolice;state.startMission=(s,index)=>{startMission(s,index);s.mission=s.active;s.missionDef=MISSIONS[s.mission];s.target=s.missionDef.point;s.timer=s.missionDef.time};const params=new URLSearchParams(location.search);if(setupShot(params.get('shot'),state,world)){state.police=state.police||[];state.mission=(state.activeShot==='mission'||state.activeShot==='foot')?0:-1;if(state.mission>=0){state.missionDef=MISSIONS[0];state.target=MISSIONS[0].point;state.timer=MISSIONS[0].time}if(state.activeShot==='title')state.screen='title'}
+let last=performance.now(),saveClock=0,cameraX=state.x-W/2,cameraY=state.y-H/2;function raise(amount){state.wanted=Math.min(5,state.wanted+amount);state.stars=Math.ceil(state.wanted);state.crime=true;state.quiet=0}
+function begin(){audio.gesture();state.started=true;state.screen='play';if(state.completed===0&&state.mission<0)startMission(state);state.banner='Palmshade is yours. Keep your head down.';state.bannerTime=4}
+function reset(){state.health=100;state.x=930;state.y=400;state.car=null;state.stars=0;state.wanted=0;state.bust=0;state.police=[];state.screen='play'}
+function toggleMute(){if(input.held.has('KeyM')&&!state.mHeld){state.mHeld=true;audio.toggle()}if(!input.held.has('KeyM'))state.mHeld=false}
+function step(dt){toggleMute();if(input.held.has('KeyP')||input.held.has('Escape')){if(!state.pauseKey){state.pauseKey=true;if(state.screen==='play')state.screen='paused';else if(state.screen==='paused')state.screen='play'}}else state.pauseKey=false;const click=input.takeClick();if(state.screen==='title'){if(click||input.held.has('Enter'))begin();return}if(state.screen==='paused'){if(click)state.screen='play';return}if(state.screen==='wasted'||state.screen==='busted'){if(click||input.held.has('Enter'))reset();return}if(state.screen!=='play')return;
+if(input.held.has('KeyE')){if(!state.eKey){state.eKey=true;if(state.car){state.x=state.car.x+30;state.y=state.car.y+25;state.car=null;audio.drive(false)}else{const c=state.cars.filter(c=>!c.police&&Math.hypot(c.x-state.x,c.y-state.y)<70).sort((a,b)=>Math.hypot(a.x-state.x,a.y-state.y)-Math.hypot(b.x-state.x,b.y-state.y))[0];if(c){state.car=c;c.stolen=true;if(!c.stolenBefore){raise(.75);c.stolenBefore=true}const [n]=carModel(c.model);state.carName=n}}}}else state.eKey=false;
+if(state.car){updateCars(state.cars,dt,world,state,input.held,raise);state.x=state.car.x;state.y=state.car.y;state.angle=state.car.angle;audio.drive(true,state.car.speed)}else{audio.drive(false);let dx=(input.held.has('KeyD')||input.held.has('ArrowRight')?1:0)-(input.held.has('KeyA')||input.held.has('ArrowLeft')?1:0),dy=(input.held.has('KeyS')||input.held.has('ArrowDown')?1:0)-(input.held.has('KeyW')||input.held.has('ArrowUp')?1:0);if(dx||dy){const len=Math.hypot(dx,dy),speed=input.held.has('ShiftLeft')?230:145;dx=dx/len*speed*dt;dy=dy/len*speed*dt;const nx=state.x+dx,ny=state.y+dy;if(!blocked(world,nx,state.y,11))state.x=nx;if(!blocked(world,state.x,ny,11))state.y=ny;state.angle=Math.atan2(dy,dx)}if(click||input.held.has('Space')){const p=state.people.filter(p=>p.alive&&Math.hypot(p.x-state.x,p.y-state.y)<62).sort((a,b)=>Math.hypot(a.x-state.x,a.y-state.y)-Math.hypot(b.x-state.x,b.y-state.y))[0];if(p){p.alive=false;raise(.65);audio.event('punch');state.banner='A witness is calling it in.';state.bannerTime=2}else if(click&&state.weapon==='pistol'&&state.ammo>0){const aimX=state.x-W/2+input.mouse.x,aimY=state.y-H/2+input.mouse.y;state.angle=Math.atan2(aimY-state.y,aimX-state.x);state.ammo--;raise(.4);audio.event('shot');state.banner='Shots fired — move!';state.bannerTime=1.4}}}
+if(input.held.has('KeyF')&&!state.fKey){state.fKey=true;if(state.weapon==='pistol'&&state.ammo>0){state.ammo--;raise(.55);audio.event('shot');for(const p of state.people)if(p.alive&&Math.hypot(p.x-state.x,p.y-state.y)<145){p.panic=5;break}}}else if(!input.held.has('KeyF'))state.fKey=false;
+updatePeople(state.people,dt,state,state.cars);for(const box of state.pickups)if(box.live&&Math.hypot(box.x-state.x,box.y-state.y)<34){box.live=false;state.ammo+=box.ammo;state.cash+=75;audio.event('pickup');state.banner=`AMMO +${box.ammo} · CASH +$75`;state.bannerTime=2.4}for(const p of state.people){if(p.alive&&state.car&&Math.hypot(p.x-state.x,p.y-state.y)<26&&Math.abs(state.car.speed)>3){p.alive=false;raise(1.1);state.car.speed*=.75}}
+state.quiet=(state.quiet||0)+dt;if(state.wanted>0&&state.quiet>8){state.wanted=Math.max(0,state.wanted-dt*.065);state.stars=Math.ceil(state.wanted);if(state.stars===0){state.police=[];state.crime=false}}if(state.stars>0){if(state.police.length!==state.stars)state.police=makePolice(world,state.stars);updatePolice(state.police,state,dt,state);audio.siren(Math.random()<.08);if(state.bust>=1){state.screen='busted';state.cash=Math.max(0,state.cash-320);state.banner='BUSTED · fine paid $320';state.bannerTime=9}}
+if(state.health<=0){state.screen='wasted';state.banner='WASTED · hospital transfer';state.bannerTime=9;state.health=0}if(state.mission>=0){state.missionDef=MISSIONS[state.mission];state.target=state.missionDef.point;state.distance=Math.hypot(state.x-state.target.x,state.y-state.target.y);state.timer-=dt;if(state.mission===2){if(state.stars===0){state.completed++;state.cash+=state.missionDef.reward;state.banner='MISSION COMPLETE · +$'+state.missionDef.reward;state.bannerTime=5;audio.event('mission');state.mission=-1}}else if(state.distance<110&&(!state.mission||state.car?.model===2)){state.completed++;state.cash+=state.missionDef.reward;state.banner='MISSION COMPLETE · +$'+state.missionDef.reward;state.bannerTime=5;audio.event('mission');state.mission=-1;startMission(state,state.completed%3)}else if(state.timer<=0){state.timer=MISSIONS[state.mission].time;state.banner='The lead went cold. Try again.';state.bannerTime=4}}if(state.bannerTime>0)state.bannerTime-=dt;saveClock+=dt;if(saveClock>5){saveClock=0;try{localStorage.setItem(SAVE,JSON.stringify({cash:state.cash,completed:state.completed,x:state.x,y:state.y}))}catch{}}
 }
-
-function saveBest(value) {
-  try {
-    window.localStorage.setItem(BEST_KEY, String(value));
-  } catch {
-    // Storage can be off (private windows): the best score then lasts this visit only.
-  }
-}
-
-function runShot(name) {
-  const scene = stageShot(name, world);
-  let painted = 0;
-  function paint() {
-    renderer.draw(world.state, scene.screen, scene.best);
-    painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
-    else window.__shotReady = true;
-  }
-  requestAnimationFrame(paint);
-}
-
-function runGame() {
-  const input = createInput(canvas);
-  let screen = SCREEN_TITLE;
-  let best = readBest();
-  let accumulator = 0;
-  let last = performance.now();
-
-  // Screen readers (and anyone watching the page's text) hear the screen changes and each hit.
-  function announce(message) {
-    status.textContent = message;
-  }
-
-  function startGame() {
-    world.reset();
-    accumulator = 0;
-    screen = SCREEN_PLAY;
-    announce(`Playing. ${LIVES} lives.`);
-  }
-
-  function endGame() {
-    screen = SCREEN_OVER;
-    if (world.state.score > best) {
-      best = world.state.score;
-      saveBest(best);
-    }
-    announce(`Game over. Score ${world.state.score}. Best ${best}.`);
-  }
-
-  function handleActions() {
-    const actions = input.takeActions();
-    if (actions & ACTION_CONFIRM && (screen === SCREEN_TITLE || screen === SCREEN_OVER)) startGame();
-    else if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === SCREEN_PAUSED) {
-      screen = SCREEN_PLAY;
-      announce('Playing.');
-    }
-  }
-
-  function step() {
-    if (screen === SCREEN_TITLE) {
-      world.step(STEP, 0, true);
-      return;
-    }
-    const events = world.step(STEP, input.direction(), false);
-    if (events & EVENT_OVER) endGame();
-    else if (events & EVENT_HIT) announce(world.state.lives === 1 ? 'Hit. 1 life left.' : `Hit. ${world.state.lives} lives left.`);
-  }
-
-  function frame(now) {
-    requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
-    last = now;
-    handleActions();
-    if (screen === SCREEN_TITLE || screen === SCREEN_PLAY) {
-      while (accumulator >= STEP && (screen === SCREEN_TITLE || screen === SCREEN_PLAY)) {
-        step();
-        accumulator -= STEP;
-      }
-    } else {
-      accumulator = 0;
-    }
-    renderer.draw(world.state, screen, best);
-  }
-
-  // Leaving the tab pauses a running game rather than letting blocks fall unseen.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    }
-  });
-
-  announce('Block Dodger. Press Space or click to start.');
-  requestAnimationFrame(frame);
-}
-
-if (shot) runShot(shot);
-else runGame();
+function drawWorld(){ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle=COLORS.sand;ctx.fillRect(0,0,W,H);const targetX=Math.max(0,Math.min(WORLD.w-W,state.x-W/2)),targetY=Math.max(0,Math.min(WORLD.h-H,state.y-H/2));cameraX+=(targetX-cameraX)*.13;cameraY+=(targetY-cameraY)*.13;const camX=cameraX,camY=cameraY;ctx.save();ctx.translate(-camX,-camY);ctx.fillStyle='#71936c';ctx.fillRect(0,0,WORLD.w-490,WORLD.h);const water=ctx.createLinearGradient(WORLD.w-560,0,WORLD.w,0);water.addColorStop(0,'#52b4b6');water.addColorStop(1,'#277c91');ctx.fillStyle=water;ctx.fillRect(WORLD.w-490,0,490,WORLD.h);ctx.fillStyle='#ebd19f';ctx.fillRect(WORLD.w-520,0,30,WORLD.h);for(const ry of world.roadsY){ctx.fillStyle=COLORS.sidewalk;ctx.fillRect(0,ry-84,WORLD.w,168);ctx.fillStyle=COLORS.road;ctx.fillRect(0,ry-64,WORLD.w,128);ctx.strokeStyle='rgba(244,219,154,.65)';ctx.setLineDash([30,24]);ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,ry);ctx.lineTo(WORLD.w,ry);ctx.stroke();ctx.setLineDash([])}for(const rx of world.roadsX){ctx.fillStyle=COLORS.sidewalk;ctx.fillRect(rx-84,0,168,WORLD.h);ctx.fillStyle=COLORS.road;ctx.fillRect(rx-64,0,128,WORLD.h);ctx.strokeStyle='rgba(244,219,154,.6)';ctx.setLineDash([30,24]);ctx.beginPath();ctx.moveTo(rx,0);ctx.lineTo(rx,WORLD.h);ctx.stroke();ctx.setLineDash([])}for(const t of world.trees){ctx.fillStyle='rgba(28,42,29,.25)';ctx.beginPath();ctx.ellipse(t.x+7,t.y+9,18,10,0,0,7);ctx.fill();ctx.fillStyle='#77553c';ctx.fillRect(t.x-3,t.y-4,6,19);ctx.fillStyle='#245e46';for(let i=0;i<6;i++){ctx.save();ctx.translate(t.x,t.y);ctx.rotate(i*Math.PI/3);ctx.beginPath();ctx.ellipse(0,-12,5,16,0,0,7);ctx.fill();ctx.restore()}}for(const b of world.buildings){ctx.fillStyle='rgba(52,44,38,.25)';ctx.fillRect(b.x+15,b.y+17,b.w,b.h);ctx.fillStyle=b.color;ctx.fillRect(b.x,b.y,b.w,b.h);ctx.fillStyle='rgba(255,239,201,.22)';ctx.fillRect(b.x+8,b.y+8,b.w-16,8);ctx.fillStyle='rgba(71,65,58,.5)';for(let x=b.x+22;x<b.x+b.w-14;x+=34)for(let y=b.y+36;y<b.y+b.h-8;y+=36)ctx.fillRect(x,y,13,17);ctx.fillStyle='rgba(38,53,57,.7)';ctx.font='11px system-ui';ctx.fillText(b.name,b.x+12,b.y+b.h-12)}
+if(state.mission>=0){const g=state.target;ctx.strokeStyle='#ffd36f';ctx.lineWidth=5;ctx.beginPath();ctx.arc(g.x,g.y,42+Math.sin(performance.now()/180)*7,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#ffde8a';ctx.font='bold 16px system-ui';ctx.fillText('GARAGE',g.x-28,g.y-55)}for(const box of state.pickups)if(box.live){ctx.fillStyle='#f5c96f';ctx.beginPath();ctx.arc(box.x,box.y,12+Math.sin(performance.now()/180)*2,0,7);ctx.fill();ctx.fillStyle='#56432c';ctx.fillRect(box.x-2,box.y-7,4,14);ctx.fillRect(box.x-7,box.y-2,14,4)}for(const p of state.people)if(p.alive){ctx.fillStyle=p.panic>0?'#f3e2be':p.color;ctx.beginPath();ctx.ellipse(p.x,p.y,7,10,0,0,7);ctx.fill();ctx.fillStyle='#493b32';ctx.beginPath();ctx.arc(p.x,p.y-10,5,0,7);ctx.fill()}for(const c of state.cars)drawCar(c);for(const c of state.police||[])drawCar(c);if(!state.car){ctx.fillStyle='#f6d19a';ctx.beginPath();ctx.arc(state.x,state.y,11,0,7);ctx.fill();ctx.fillStyle='#24444a';ctx.beginPath();ctx.arc(state.x+Math.cos(state.angle)*8,state.y+Math.sin(state.angle)*8,4,0,7);ctx.fill()}ctx.restore();drawHud(ctx,{...state,cars:[...state.cars,...(state.police||[])]},world,{camX,camY});ctx.save();const glow=ctx.createRadialGradient(W*.87,H*.03,10,W*.82,H*.12,H*.8);glow.addColorStop(0,'rgba(255,215,154,.16)');glow.addColorStop(1,'rgba(255,215,154,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);const shade=ctx.createRadialGradient(W/2,H/2,H*.2,W/2,H/2,H*.9);shade.addColorStop(0,'rgba(12,24,28,0)');shade.addColorStop(1,'rgba(12,24,28,.24)');ctx.fillStyle=shade;ctx.fillRect(0,0,W,H);ctx.restore()}
+function drawCar(c){ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.angle);ctx.fillStyle='rgba(15,25,25,.35)';ctx.fillRect(-24,-10,54,27);ctx.fillStyle=c.police?'#e5e8df':carModel(c.model)[1];ctx.beginPath();ctx.roundRect(-27,-14,54,28,7);ctx.fill();ctx.fillStyle=c.police?'#283b54':'#92b0b0';ctx.fillRect(-9,-10,19,20);ctx.fillStyle='#fff3ba';ctx.fillRect(20,-9,5,6);ctx.fillRect(20,4,5,6);if(c.police){ctx.fillStyle='#df4d45';ctx.fillRect(-5,-17,9,4);ctx.fillStyle='#4287bb';ctx.fillRect(4,-17,7,4)}ctx.restore()}
+function overlay(title,subtitle,button){ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='rgba(19,29,31,.55)';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.fillStyle='#ffcc85';ctx.font='800 58px system-ui';ctx.fillText(title,W/2,H*.29);ctx.fillStyle='#fff';ctx.font='18px system-ui';ctx.fillText(subtitle,W/2,H*.38);if(title==='PALMSHADE HEAT'){ctx.font='15px system-ui';['Luz Ortega knows the docks. The city knows your face. Make one run at a time.','WASD / arrows move & drive · Shift sprint · E enter car · click punch / aim & fire','Space handbrake · P pause · M mute · Find pickups for ammo'].forEach((t,i)=>ctx.fillText(t,W/2,H*.48+i*28));ctx.fillStyle='#f3b962';ctx.font='bold 18px system-ui';ctx.fillText('START   [CLICK / ENTER]        CONTINUE   [C]',W/2,H*.68);ctx.font='13px system-ui';ctx.fillStyle='#eee';ctx.fillText('Saved: $'+state.cash+'  ·  '+state.completed+' jobs completed',W/2,H*.74)}else{ctx.fillStyle='#f3b962';ctx.font='bold 20px system-ui';ctx.fillText(button+'  [CLICK / ENTER]',W/2,H*.57)}ctx.textAlign='left'}
+let paintedFrames=0;function frame(now){const dt=Math.min(.045,(now-last)/1000);last=now;step(dt);drawWorld();if(state.screen==='title')overlay('PALMSHADE HEAT','A coastal city. A favor that gets loud. A way out is never a straight line.','START');if(state.screen==='paused')overlay('PAUSED','Take a breath. Palmshade will wait.','RESUME');if(state.screen==='wasted'||state.screen==='busted')overlay(state.screen.toUpperCase(),state.banner,'RESPAWN');if(state.activeShot&&++paintedFrames>=2)window.__shotReady=true;requestAnimationFrame(frame)}requestAnimationFrame(frame);

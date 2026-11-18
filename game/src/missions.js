@@ -1,0 +1,3 @@
+export const CONTACT='Luz Ortega';
+export const MISSIONS=[{name:'First Run',line:'A clean favor. Take the Cove Runner to the Marisol garage across town.',goal:'Reach the Marisol garage',point:{x:3700,y:2750},kind:'drive',reward:650,time:115},{name:'Hot Wheels',line:'A gold Solstice GT is waiting. Take it to the dock garage.',goal:'Deliver the Solstice GT',point:{x:3780,y:180},kind:'car',reward:950,time:180},{name:'Heat Escape',line:'Three stars are on you. Lose them, then call me from a quiet block.',goal:'Lose the heat',point:{x:600,y:2600},kind:'escape',reward:1300,time:240}];
+export function startMission(s,index=s.completed){s.active=index%MISSIONS.length;s.timer=MISSIONS[s.active].time;s.banner=MISSIONS[s.active].line;s.bannerTime=6}
