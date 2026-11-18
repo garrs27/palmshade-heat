@@ -1,61 +1,21 @@
-// Every tuning number and colour in one place. The playfield is a fixed 1280x720 logical area;
-// the renderer scales it to the window, so no rule below depends on the screen size.
-
-export const FIELD = { width: 1280, height: 720, groundY: 664 };
-
-/** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
+export const W = 2200;
+export const H = 1600;
 export const STEP = 1 / 60;
 
-export const PLAYER = {
-  width: 72,
-  height: 24,
-  speed: 560,
-  invulnerable: 1.5,
+// Roads are shared by world generation, traffic, rendering, and the map.
+export const ROADS = [260, 620, 980, 1340, 1700, 2060];
+
+export const MISSIONS = [
+  { name: 'A Long Way Home', story: 'Mara Venn needs a ride across Palmshade. Reach the marina marker.', objective: 'Drive to the marina marker.', x: 1700, y: 260, reward: 250 },
+  { name: 'Saltwater Parcel', story: 'A sealed parcel has to reach the boardwalk before the tide turns.', objective: 'Deliver the package before time runs out.', x: 2060, y: 980, reward: 400, timer: 55 },
+  { name: 'Boardwalk Business', story: 'Three dockside bruisers are leaning on the night crew. Clear the marked spot.', objective: 'Knock out 3 troublemakers.', x: 1340, y: 1340, reward: 550, fight: 3 },
+  { name: 'No Easy Shore', story: 'The heat is on. Reach the safehouse with at least two stars.', objective: 'Reach the safehouse while wanted is 2+.', x: 260, y: 260, getaway: true, reward: 900 }
+];
+
+export const COLORS = {
+  ink: '#122a31',
+  sand: '#e6c98e',
+  water: '#41a9ad',
+  road: '#566166',
+  building: '#dc8960'
 };
-
-export const LIVES = 3;
-
-export const BLOCK = {
-  minWidth: 40,
-  maxWidth: 110,
-  height: 36,
-  speed: 240,
-  speedPerLevel: 30,
-  speedJitter: 90,
-  interval: 0.55,
-  intervalScale: 0.88,
-  minInterval: 0.14,
-  dodgePoints: 1,
-};
-
-export const COIN = {
-  size: 24,
-  speed: 190,
-  speedPerLevel: 14,
-  interval: 1.4,
-  intervalJitter: 0.8,
-  points: 10,
-};
-
-/** Seconds of play per level, and the last level: speeds and spawn rates stop growing there. */
-export const LEVEL = { seconds: 12, max: 12 };
-
-/** How many falling things can exist at once; the pool is allocated once, at boot. */
-export const POOL_SIZE = 64;
-
-export const PALETTE = {
-  backdrop: '#11141b',
-  sky: '#1b1f2a',
-  ground: '#2a3040',
-  player: '#4fc3f7',
-  block: '#e5534b',
-  coin: '#f2c94c',
-  panel: '#252b38',
-  text: '#eef1f5',
-  muted: '#8b93a3',
-};
-
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-
-/** Where the best score is kept between visits (this browser only). */
-export const BEST_KEY = 'block-dodger.best';
